@@ -20,8 +20,10 @@ func main() {
     fmt.Println("Listening now")
 }
 
-
 func Version(w http.ResponseWriter, r *http.Request) {
+    for _, cookie := range r.Cookies() {
+        fmt.Println(cookie.Name)
+    }
     io.WriteString(w, "1.0")
 }
 
@@ -46,7 +48,6 @@ func Login(w http.ResponseWriter, r *http.Request) {
         return
   	}
 
-  	// Exchanging the code for a token
   	token, err := conf.Exchange(oauth2.NoContext, code)
   	if err != nil {
   	  http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -74,7 +75,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return 
 	}
 
-    io.WriteString(w, data.Email)
+    io.WriteString(w, "Login successful for " + data.Email)
 }
 
 
