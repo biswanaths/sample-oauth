@@ -8,6 +8,7 @@ import (
 
     "github.com/gorilla/mux"
 	"golang.org/x/oauth2"
+    "github.com/codegangsta/negroni"
 )
 
 func main() {
@@ -15,9 +16,18 @@ func main() {
     r := mux.NewRouter()
     r.HandleFunc("/version", Version)
     r.HandleFunc("/login", Login)
-    http.Handle("/", r)
-    http.ListenAndServe("127.0.0.1:8090", nil)
+
+    n := negroni.Classic()
+    n.Use(negroni.HandlerFunc(MyHandler))
+    n.UseHandler(r)
+    n.Run(":8090")
     fmt.Println("Listening now")
+}
+
+func MyHandler(rw http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+    fmt.Println("starting handler")
+    next(rw, r)
+    fmt.Println("Finished with handler")
 }
 
 func Version(w http.ResponseWriter, r *http.Request) {
