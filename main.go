@@ -4,88 +4,55 @@ import (
     "fmt"
     "io"
     "net/http"
-    "encoding/json"
 
     "github.com/gorilla/mux"
-	"golang.org/x/oauth2"
     "github.com/codegangsta/negroni"
+    oauth2 "github.com/goincremental/negroni-oauth2"
+    sessions "github.com/goincremental/negroni-sessions"
+    "github.com/goincremental/negroni-sessions/cookiestore"
 )
+
+var cookies map[string]string
+
+func KeyCloak(config *oauth2.Config) negroni.Handler { 
+    authUrl     := "http://indiadevres3.cloudapp.net:8080/auth/realms/Waygum/protocol/openid-connect/auth"
+    tokenUrl    := "http://indiadevres3.cloudapp.net:8080/auth/realms/Waygum/protocol/openid-connect/token"
+    return oauth2.NewOAuth2Provider(config, authUrl, tokenUrl)
+}
 
 func main() {
     fmt.Println("Starting sample auth...")
-    r := mux.NewRouter()
-    r.HandleFunc("/version", Version)
-    r.HandleFunc("/login", Login)
 
     n := negroni.Classic()
-    n.Use(negroni.HandlerFunc(MyHandler))
-    n.UseHandler(r)
+
+    n.Use(sessions.Sessions("mysession", cookiestore.New([]byte("secret12"))))
+
+    n.Use(KeyCloak(&oauth2.Config{
+            ClientID : "grafana",
+            ClientSecret : "10b54f7c-a8ed-4a61-abd7-eb993d12367b",
+            RedirectURL : "http://127.0.0.1:8090/oauth2callback",
+            Scopes : []string{"name","email"} }))
+
+    router := mux.NewRouter()
+
+    router.HandleFunc("/", Home) 
+    router.HandleFunc("/version", Version) 
+
+    router.HandleFunc("/hello", func(w http.ResponseWriter, req *http.Request) {
+        fmt.Fprintf(w,"World !") 
+    })
+
+    n.Use(oauth2.LoginRequired())
+
+    n.UseHandler(router)
     n.Run(":8090")
-    fmt.Println("Listening now")
 }
 
-func MyHandler(rw http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
-    fmt.Println("starting handler")
-    next(rw, r)
-    fmt.Println("Finished with handler")
+func Home(w http.ResponseWriter, r *http.Request) {
+    io.WriteString(w, "Welcome to Sample Oauth")
 }
 
 func Version(w http.ResponseWriter, r *http.Request) {
-    for _, cookie := range r.Cookies() {
-        fmt.Println(cookie.Name)
-    }
     io.WriteString(w, "1.0")
 }
-
-func Login(w http.ResponseWriter, r *http.Request) { 
-
-  	conf := &oauth2.Config{
-  	    ClientID:     "grafana",
-  	    ClientSecret: "10b54f7c-a8ed-4a61-abd7-eb993d12367b",
-  	    RedirectURL: "http://localhost:8090/login", 
-  	    Scopes:       []string{"name","email"},
-  	    Endpoint: oauth2.Endpoint{
-  	      AuthURL:  "http://indiadevres3.cloudapp.net:8080/auth/realms/Waygum/protocol/openid-connect/auth", 
-  	      TokenURL: "http://indiadevres3.cloudapp.net:8080/auth/realms/Waygum/protocol/openid-connect/token" } }
-
-    apiUrl :=  "http://indiadevres3.cloudapp.net:8080/auth/realms/Waygum/protocol/openid-connect/userinfo"
-
-  	code := r.URL.Query().Get("code")
-
-  	if code == "" {
-        url := conf.AuthCodeURL("")
-        http.Redirect(w, r, url, 301)
-        return
-  	}
-
-  	token, err := conf.Exchange(oauth2.NoContext, code)
-  	if err != nil {
-  	  http.Error(w, err.Error(), http.StatusInternalServerError)
-  	  return
-  	}
-
-	var data struct {
-		Id    string `json:"id"`
-		Name  string `json:"name"`
-		Email string `json:"email"`
-	}
-
-	client := conf.Client(oauth2.NoContext, token)
-
-	res, err := client.Get(apiUrl)
-	if err != nil {
-  	    http.Error(w, err.Error(), http.StatusInternalServerError)
-		return 
-	}
-
-	defer res.Body.Close()
-
-	if err = json.NewDecoder(res.Body).Decode(&data); err != nil { 
-  	    http.Error(w, err.Error(), http.StatusInternalServerError)
-		return 
-	}
-
-    io.WriteString(w, "Login successful for " + data.Email)
-}
-
 
